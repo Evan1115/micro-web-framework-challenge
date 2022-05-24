@@ -2,53 +2,96 @@ const request = require('supertest');
 const fs = require('mz/fs');
 const app = require('./app');
 
-describe("POST /api/images/upload - upload a new image", () => {
+describe("POST /api/images/upload", () => {
 
-    it("should upload file successfully", async () => {
-        const testDataPath = `${__dirname}/testData/clipboard-0.jpg`;
-        const filePath = `${__dirname}/uploads/clipboard-0.jpg`;
+    describe("upload an empty file", () => {
+        it("should return error", async () => {
+            const response = await request(app)
+                .post("/api/images/upload")
+                .attach('file')
+            const { success, message } = response.body
 
-        const response = await request(app)
-            .post("/api/images/upload")
-            .attach('file', testDataPath)
+            expect(response.statusCode).toBe(400);
+            expect(success).toBeFalsy();
+            expect(message).toBe("No file is inserted");
 
-        const { success, message, image } = response.body
-
-        const urlExist = image._link.includes('/uploads/clipboard-0.jpg')
-        const fileExists = await fs.exists(filePath)
-
-        expect(fileExists).toBeTruthy();
-        expect(response.statusCode).toBe(200);
-        expect(success).toBeTruthy();
-        expect(message).toBe("Uploaded successfully");
-        expect(urlExist).toBeTruthy();
-        fs.unlink(filePath)
+        })
     })
 
-    it('should return error when file type is empty ', async () => {
-        const response = await request(app)
-            .post("/api/images/upload")
-            .attach('file')
-        const { success, message } = response.body
+    describe("upload a non image or zip file", () => {
+        it('should return error and file is not saved', async () => {
+            const testDataPath = `${__dirname}/testData/test-5.pdf`;
+            const filePath = `${__dirname}/uploads/test-5.pdf`;
 
-        expect(response.statusCode).toBe(400);
-        expect(success).toBeFalsy();
-        expect(message).toBe("No file is inserted");
+            const response = await request(app)
+                .post("/api/images/upload")
+                .attach('file', testDataPath)
+            const { success, message } = response.body
+            const fileExists = await fs.exists(filePath)
+
+            expect(response.statusCode).toBe(400);
+            expect(success).toBeFalsy();
+            expect(message).toBe("Allowed only image type or zip type of images");
+            expect(fileExists).toBeFalsy()
+        })
+    })
+    describe("upload a single image", () => {
+        it("should upload a image successfully", async () => {
+            const testDataPath = `${__dirname}/testData/test-4.jpg`;
+            const filePath = `${__dirname}/uploads/test-4.jpg`;
+
+            const response = await request(app)
+                .post("/api/images/upload")
+                .attach('file', testDataPath)
+
+            const { success, message, images } = response.body
+
+            const urlExist = images[0]._link.includes('/uploads/test-4.jpg')
+            const fileExists = await fs.exists(filePath)
+
+            expect(fileExists).toBeTruthy();
+            expect(response.statusCode).toBe(200);
+            expect(success).toBeTruthy();
+            expect(message).toBe("Uploaded successfully");
+            expect(urlExist).toBeTruthy();
+            fs.unlink(filePath)
+        })
     })
 
-    it('should return error when file type is wrong ', async () => {
-        const testDataPath = `${__dirname}/testData/Lim_Lee_Jing_Resume.pdf`;
-        const filePath = `${__dirname}/uploads/Lim_Lee_Jing_Resume.pdf`;
+    describe("upload a zip of images", () => {
+        it("should successfully upload zip of images", async () => {
+            const testDataPath = `${__dirname}/testData/test.zip`;
+            const imagesLink = ['/uploads/test-1.jpg', '/uploads/test-2.jpg', '/uploads/test-3.jpg']
+            const response = await request(app)
+                .post("/api/images/upload")
+                .attach('file', testDataPath)
+            const { success, message, images } = response.body
 
-        const response = await request(app)
-            .post("/api/images/upload")
-            .attach('file', testDataPath)
-        const { success, message } = response.body
-        const fileExists = await fs.exists(filePath)
+            expect(images).not.toBe([])
+            images.forEach((image, index) => {
+                console.log(image._link)
+                expect(image._link.includes(imagesLink[index])).toBeTruthy
+            })
+            expect(response.statusCode).toBe(200);
+            expect(success).toBeTruthy();
+            expect(message).toBe("Uploaded successfully");
+        })
 
-        expect(response.statusCode).toBe(400);
-        expect(success).toBeFalsy();
-        expect(message).toBe("Allowed only image type");
-        expect(fileExists).toBeFalsy()
+        it("should return error when upload zip contains non image type", async () => {
+            const testDataPath = `${__dirname}/testData/test-contains-pdf.zip`;
+            const filePath = `${__dirname}/uploads/test-contains-pdf.zip`;
+
+            const response = await request(app)
+                .post("/api/images/upload")
+                .attach('file', testDataPath)
+            const { success, message } = response.body
+            const fileExists = await fs.exists(filePath)
+
+            expect(fileExists).toBeFalsy();
+            expect(response.statusCode).toBe(400);
+            expect(success).toBeFalsy();
+            expect(message).toBe("Zip contains non image type");
+        })
+
     })
 })
